@@ -17,23 +17,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = [
-    'application/pdf', 
-    'application/msword', 
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/zip',
-    'application/x-zip-compressed'
-  ];
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-
-    cb(new Error('Invalid file type. Only PDF, DOC, DOCX, and ZIP files are allowed.'), false);
-  }
-};
 const upload = multer({ 
-  storage: storage,
-
+  storage: storage
 });
 module.exports = upload;

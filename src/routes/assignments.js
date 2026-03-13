@@ -37,8 +37,8 @@ router.get(
 
       const skip = (parseInt(page) - 1) * parseInt(limit);
       const total = await Assignment.countDocuments(query);
-      
       const assignments = await Assignment.find(query)
+        .populate('teacher_id', 'name')
         .sort({ created_at: -1 })
         .skip(skip)
         .limit(parseInt(limit));
@@ -63,7 +63,7 @@ router.get(
       });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ error: 'Server error fetching assignments' });
+      res.status(500).json({ error: `Server error fetching assignments: ${err.message}`, stack: err.stack });
     }
   }
 );
@@ -75,26 +75,28 @@ router.post(
     body('title').trim().notEmpty().withMessage('Title is required'),
     body('description').trim().notEmpty().withMessage('Description is required'),
     body('due_date').isISO8601().withMessage('Valid due date is required'),
+    body('status').optional().isIn(['draft', 'published']).withMessage('Invalid status'),
   ],
   async (req, res) => {
     if (validationErrors(req, res)) return;
 
     try {
-      const { title, description, due_date } = req.body;
+      const { title, description, due_date, status } = req.body;
 
       const assignment = new Assignment({
         title,
         description,
         due_date,
-        status: 'draft',
+        status: status || 'draft',
         teacher_id: req.user.id,
       });
 
       await assignment.save();
+      await assignment.populate('teacher_id', 'name');
       res.status(201).json(assignment);
     } catch (err) {
       console.error(err);
-      res.status(500).json({ error: 'Failed to create assignment' });
+      res.status(500).json({ error: 'Failed to create assignment: ' + err.message, stack: err.stack });
     }
   }
 );
@@ -107,6 +109,7 @@ router.put(
     body('title').optional().trim().notEmpty().withMessage('Title cannot be empty'),
     body('description').optional().trim().notEmpty().withMessage('Description cannot be empty'),
     body('due_date').optional().isISO8601().withMessage('Valid due date is required'),
+    body('status').optional().isIn(['draft', 'published']).withMessage('Invalid status'),
   ],
   async (req, res) => {
     if (validationErrors(req, res)) return;
@@ -120,10 +123,12 @@ router.put(
       if (assignment.status !== 'draft') {
         return res.status(400).json({ error: 'Only draft assignments can be edited' });
       }
+      const { title, description, due_date, status } = req.body;
 
-      if (req.body.title) assignment.title = req.body.title;
-      if (req.body.description) assignment.description = req.body.description;
-      if (req.body.due_date) assignment.due_date = req.body.due_date;
+      if (title) assignment.title = title;
+      if (description) assignment.description = description;
+      if (due_date) assignment.due_date = due_date;
+      if (status) assignment.status = status;
 
       await assignment.save();
       res.json(assignment);
@@ -206,6 +211,7 @@ router.patch(
         });
       }
       
+      await assignment.populate('teacher_id', 'name');
       res.json(assignment);
     } catch (err) {
       console.error(err);
@@ -222,7 +228,8 @@ router.get(
     if (validationErrors(req, res)) return;
 
     try {
-      const assignment = await Assignment.findOne({ _id: req.params.id, teacher_id: req.user.id });
+      const assignment = await Assignment.findOne({ _id: req.params.id, teacher_id: req.user.id })
+        .populate('teacher_id', 'name');
 
       if (!assignment) {
         return res.status(404).json({ error: 'Assignment not found' });
@@ -247,7 +254,7 @@ router.get(
       res.json({ assignment, submissions });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ error: 'Failed to fetch submissions' });
+      res.status(500).json({ error: 'Failed to fetch submissions: ' + err.message, stack: err.stack });
     }
   }
 );
@@ -366,10 +373,6 @@ router.post(
         return res.status(404).json({ error: 'Assignment not found or not published' });
       }
 
-      if (new Date(assignment.due_date) < new Date()) {
-        return res.status(400).json({ error: 'Submission deadline has passed' });
-      }
-
       const existing = await Submission.findOne({ assignment_id: req.params.id, student_id: req.user.id });
 
       if (existing) {
@@ -432,7 +435,7 @@ router.get(
 
 router.get(
   '/dashboard/stats',
-  authorizeRole('teacher'),
+  requireTeacher,
   async (req, res) => {
     try {
       const teacherId = new mongoose.Types.ObjectId(req.user.id);
@@ -545,6 +548,25 @@ router.get(
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+    }
+  }
+);
+
+router.get(
+  '/:id',
+  requireTeacher,
+  [param('id').isMongoId().withMessage('Invalid assignment ID')],
+  async (req, res) => {
+    if (validationErrors(req, res)) return;
+    try {
+      const assignment = await Assignment.findOne({ _id: req.params.id, teacher_id: req.user.id });
+      if (!assignment) {
+        return res.status(404).json({ error: 'Assignment not found' });
+      }
+      res.json(assignment);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Failed to fetch assignment' });
     }
   }
 );

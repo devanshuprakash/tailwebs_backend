@@ -15,7 +15,10 @@ const users = [
 async function seedAll() {
   try {
     console.log('🌱 Connecting to MongoDB...');
-    await mongoose.connect(mongoURI);
+    await mongoose.connect(mongoURI, {
+      serverSelectionTimeoutMS: 5000,
+      tlsAllowInvalidCertificates: true
+    });
     console.log('🧹 Clearing existing data...');
     await User.deleteMany({});
     await Assignment.deleteMany({});

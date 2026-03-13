@@ -13,7 +13,7 @@ const submissionSchema = new mongoose.Schema({
   },
   answer: {
     type: String,
-    required: true,
+    default: '',
   },
   submitted_at: {
     type: Date,
